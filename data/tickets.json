@@ -1,0 +1,27 @@
+{
+    "lastId": 2,
+    "tickets": [
+        {
+            "id": 1,
+            "channelId": "1512506119304642751",
+            "userId": "761836159587844107",
+            "username": "pikay_29",
+            "type": "Logo",
+            "status": "closed",
+            "createdAt": "2026-06-05T17:19:20.050Z",
+            "closedAt": "2026-06-05T17:19:45.837Z",
+            "closedBy": "pikay_29"
+        },
+        {
+            "id": 2,
+            "channelId": "1512506450000478320",
+            "userId": "761836159587844107",
+            "username": "pikay_29",
+            "type": "Video",
+            "status": "closed",
+            "createdAt": "2026-06-05T17:20:38.886Z",
+            "closedAt": "2026-06-05T17:21:54.781Z",
+            "closedBy": "pikay_29"
+        }
+    ]
+}
