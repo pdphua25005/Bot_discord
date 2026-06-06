@@ -206,6 +206,15 @@ client.once('clientReady', async () => {
 });
 
 client.on('guildMemberAdd', async member => {
+    const AUTO_ROLE_ID = '1512505097274527764';
+
+    try {
+        await member.roles.add(AUTO_ROLE_ID);
+        console.log(`✅ Đã add role tự động cho ${member.user.tag}`);
+    } catch (error) {
+        console.error('❌ Lỗi add role tự động:', error);
+    }
+
     const channel = member.guild.channels.cache.get(
         process.env.WELCOME_CHANNEL_ID
     );
