@@ -15,6 +15,7 @@ const { sendTicketPanel } = require('./ticket/ticketPanel');
 const { handleTicket } = require('./ticket/ticketHandler');
 const { getStats } = require('./ticket/ticketStore');
 const { initPlayer } = require('./music/player');
+
 const {
     handleMusic,
     handleMusicButton,
@@ -22,6 +23,7 @@ const {
 } = require('./music/musicHandler');
 
 const STAFF_ROLE_ID = process.env.TICKET_STAFF_ROLE_ID;
+const AUTO_ROLE_ID = '1512505097274527764';
 
 const client = new Client({
     intents: [
@@ -37,6 +39,27 @@ function isBotStaff(interaction) {
     if (!STAFF_ROLE_ID) return false;
     return interaction.member.roles.cache.has(STAFF_ROLE_ID);
 }
+
+async function sendModLog(guild, embed) {
+    const logChannelId = process.env.MOD_LOG_CHANNEL_ID;
+    if (!logChannelId) return;
+
+    const channel = guild.channels.cache.get(logChannelId);
+    if (!channel) return;
+
+    await channel.send({ embeds: [embed] }).catch(() => {});
+}
+
+const spamMap = new Map();
+
+const blockedLinks = [
+    'discord.gg/',
+    'discord.com/invite/',
+    'bit.ly/',
+    'grabify',
+    'iplogger',
+    'tinyurl.com'
+];
 
 const commands = [
     new SlashCommandBuilder()
@@ -164,6 +187,44 @@ const commands = [
         ),
 
     new SlashCommandBuilder()
+        .setName('timeout')
+        .setDescription('Timeout thành viên')
+        .addUserOption(option =>
+            option
+                .setName('user')
+                .setDescription('Người bị timeout')
+                .setRequired(true)
+        )
+        .addIntegerOption(option =>
+            option
+                .setName('minutes')
+                .setDescription('Số phút timeout')
+                .setMinValue(1)
+                .setMaxValue(10080)
+                .setRequired(true)
+        )
+        .addStringOption(option =>
+            option
+                .setName('reason')
+                .setDescription('Lý do timeout')
+                .setRequired(false)
+        ),
+
+    new SlashCommandBuilder()
+        .setName('untimeout')
+        .setDescription('Gỡ timeout thành viên')
+        .addUserOption(option =>
+            option
+                .setName('user')
+                .setDescription('Người được gỡ timeout')
+                .setRequired(true)
+        ),
+
+    new SlashCommandBuilder()
+        .setName('status')
+        .setDescription('Xem trạng thái bot'),
+
+    new SlashCommandBuilder()
         .setName('lock')
         .setDescription('Khoá kênh hiện tại'),
 
@@ -206,8 +267,6 @@ client.once('clientReady', async () => {
 });
 
 client.on('guildMemberAdd', async member => {
-    const AUTO_ROLE_ID = '1512505097274527764';
-
     try {
         await member.roles.add(AUTO_ROLE_ID);
         console.log(`✅ Đã add role tự động cho ${member.user.tag}`);
@@ -237,20 +296,17 @@ client.on('guildMemberAdd', async member => {
                 `• Thumbnail\n` +
                 `• Avatar & Cover\n` +
                 `• Chỉnh sửa hình ảnh chuyên nghiệp\n\n` +
-
                 `🎬 **DỊCH VỤ EDIT VIDEO**\n` +
                 `• Video quảng bá máy chủ GTA5\n` +
                 `• Xây dựng kênh TikTok\n` +
                 `• Edit Highlight Gaming\n` +
                 `• Edit video theo yêu cầu\n` +
                 `• Nhận edit dài hạn số lượng lớn\n\n` +
-
                 `💎 **CAM KẾT**\n` +
                 `✅ Chất lượng\n` +
                 `✅ Uy tín\n` +
                 `✅ Hỗ trợ tận tâm\n` +
                 `✅ Bảo hành sau bàn giao\n\n` +
-
                 `📩 Hãy tạo Ticket nếu bạn cần hỗ trợ hoặc sử dụng dịch vụ.`
             )
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
@@ -270,6 +326,76 @@ client.on('guildMemberAdd', async member => {
 
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
+    if (!message.guild || !message.member) return;
+
+    const isStaff =
+        message.member.roles.cache.has(STAFF_ROLE_ID) ||
+        message.member.permissions.has(PermissionFlagsBits.ManageMessages);
+
+    if (!isStaff) {
+        const content = message.content.toLowerCase();
+
+        const hasBlockedLink = blockedLinks.some(link =>
+            content.includes(link)
+        );
+
+        if (hasBlockedLink) {
+            await message.delete().catch(() => {});
+
+            const embed = new EmbedBuilder()
+                .setColor('#ff0000')
+                .setTitle('🛡️ ANTI LINK')
+                .setDescription(`${message.author} đã gửi link bị chặn.`)
+                .addFields({
+                    name: 'Nội dung',
+                    value: message.content.slice(0, 1000) || 'Không có nội dung'
+                })
+                .setTimestamp();
+
+            await sendModLog(message.guild, embed);
+
+            return message.channel.send({
+                content: `🚫 ${message.author}, link này không được phép gửi trong server.`
+            }).then(msg => {
+                setTimeout(() => msg.delete().catch(() => {}), 5000);
+            });
+        }
+
+        const userId = message.author.id;
+        const now = Date.now();
+
+        if (!spamMap.has(userId)) {
+            spamMap.set(userId, []);
+        }
+
+        const timestamps = spamMap
+            .get(userId)
+            .filter(time => now - time < 5000);
+
+        timestamps.push(now);
+        spamMap.set(userId, timestamps);
+
+        if (timestamps.length >= 5) {
+            await message.member.timeout(
+                5 * 60 * 1000,
+                'Spam tin nhắn'
+            ).catch(() => {});
+
+            const embed = new EmbedBuilder()
+                .setColor('#ff9900')
+                .setTitle('🛡️ ANTI SPAM')
+                .setDescription(`${message.author} đã bị timeout 5 phút vì spam.`)
+                .setTimestamp();
+
+            await sendModLog(message.guild, embed);
+
+            spamMap.set(userId, []);
+
+            return message.channel.send({
+                content: `🔇 ${message.author} đã bị timeout 5 phút vì spam.`
+            });
+        }
+    }
 
     if (message.content.toLowerCase() === '!testwelcome') {
         const image = await createWelcome(message.member);
@@ -303,56 +429,58 @@ client.on('messageCreate', async message => {
                 `🔒 Đã đóng: **${stats.closed}**\n\n` +
                 `**Theo loại:**\n${byTypeText}`
         });
+
+        return;
     }
-            if (message.content.toLowerCase() === '!about') {
 
-            const embed = new EmbedBuilder()
-                .setColor('#8A2BE2')
-                .setTitle('🎨 PK DESIGN & EDITOR')
-                .setDescription(
-                    '✨ DESIGN • EDIT • DEVELOP • ELEVATE\n\n' +
-                    'Chào mừng bạn đến với **PK Design & Editor** – đơn vị chuyên cung cấp các giải pháp thiết kế sáng tạo, chỉnh sửa nội dung chuyên nghiệp và phát triển hệ thống kỹ thuật số theo yêu cầu.'
-                )
-                .addFields(
-                    {
-                        name: '🖌️ DỊCH VỤ THIẾT KẾ',
-                        value:
-                            '• Logo Discord, Team, Máy chủ GTA5 trọn bộ\n' +
-                            '• Banner\n' +
-                            '• Poster\n' +
-                            '• Thumbnail\n' +
-                            '• Avatar & Cover\n' +
-                            '• Chỉnh sửa cắt / ghép hình ảnh chuyên nghiệp'
-                    },
-                    {
-                        name: '🎬 DỊCH VỤ EDIT VIDEO',
-                        value:
-                            '• Video quảng bá máy chủ GTA5\n' +
-                            '• Xây kênh Tiktok cho máy chủ GTA5\n' +
-                            '• Dịch vụ edit highlight game\n' +
-                            '• Dịch vụ edit video theo yêu cầu\n' +
-                            '• Dịch vụ edit video dài hạn số lượng lớn'
-                    },
-                    {
-                        name: '💎 CAM KẾT',
-                        value:
-                            '✅ Chất lượng\n' +
-                            '✅ Uy tín\n' +
-                            '✅ Hỗ trợ tận tâm\n' +
-                            '✅ Bảo hành sau bàn giao'
-                    }
-                )
-                .setFooter({
-                    text: 'PK Design & Editor'
-                })
-                .setTimestamp();
+    if (message.content.toLowerCase() === '!about') {
+        const embed = new EmbedBuilder()
+            .setColor('#8A2BE2')
+            .setTitle('🎨 PK DESIGN & EDITOR')
+            .setDescription(
+                '✨ DESIGN • EDIT • DEVELOP • ELEVATE\n\n' +
+                'Chào mừng bạn đến với **PK Design & Editor** – đơn vị chuyên cung cấp các giải pháp thiết kế sáng tạo, chỉnh sửa nội dung chuyên nghiệp và phát triển hệ thống kỹ thuật số theo yêu cầu.'
+            )
+            .addFields(
+                {
+                    name: '🖌️ DỊCH VỤ THIẾT KẾ',
+                    value:
+                        '• Logo Discord, Team, Máy chủ GTA5 trọn bộ\n' +
+                        '• Banner\n' +
+                        '• Poster\n' +
+                        '• Thumbnail\n' +
+                        '• Avatar & Cover\n' +
+                        '• Chỉnh sửa cắt / ghép hình ảnh chuyên nghiệp'
+                },
+                {
+                    name: '🎬 DỊCH VỤ EDIT VIDEO',
+                    value:
+                        '• Video quảng bá máy chủ GTA5\n' +
+                        '• Xây kênh Tiktok cho máy chủ GTA5\n' +
+                        '• Dịch vụ edit highlight game\n' +
+                        '• Dịch vụ edit video theo yêu cầu\n' +
+                        '• Dịch vụ edit video dài hạn số lượng lớn'
+                },
+                {
+                    name: '💎 CAM KẾT',
+                    value:
+                        '✅ Chất lượng\n' +
+                        '✅ Uy tín\n' +
+                        '✅ Hỗ trợ tận tâm\n' +
+                        '✅ Bảo hành sau bàn giao'
+                }
+            )
+            .setFooter({
+                text: 'PK Design & Editor'
+            })
+            .setTimestamp();
 
-            await message.channel.send({
-                embeds: [embed]
-            });
+        await message.channel.send({
+            embeds: [embed]
+        });
 
-            return;
-        }
+        return;
+    }
 });
 
 client.on('interactionCreate', async interaction => {
@@ -378,6 +506,98 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({
                 content: '❌ Bạn không có quyền sử dụng lệnh quản trị bot.',
                 ephemeral: true
+            });
+        }
+
+        if (command === 'timeout') {
+            const user = interaction.options.getUser('user');
+            const minutes = interaction.options.getInteger('minutes');
+            const reason =
+                interaction.options.getString('reason') ||
+                'Không có lý do';
+
+            const member = await interaction.guild.members.fetch(user.id);
+
+            if (!member.moderatable) {
+                return interaction.reply({
+                    content: '❌ Bot không thể timeout người này. Hãy kiểm tra role của bot.',
+                    ephemeral: true
+                });
+            }
+
+            await member.timeout(minutes * 60 * 1000, reason);
+
+            const embed = new EmbedBuilder()
+                .setColor('#ff9900')
+                .setTitle('🔇 TIMEOUT MEMBER')
+                .addFields(
+                    { name: 'Thành viên', value: `${user}`, inline: true },
+                    { name: 'Thời gian', value: `${minutes} phút`, inline: true },
+                    { name: 'Lý do', value: reason },
+                    { name: 'Người thực hiện', value: `${interaction.user}` }
+                )
+                .setTimestamp();
+
+            await sendModLog(interaction.guild, embed);
+
+            return interaction.reply({
+                embeds: [embed]
+            });
+        }
+
+        if (command === 'untimeout') {
+            const user = interaction.options.getUser('user');
+            const member = await interaction.guild.members.fetch(user.id);
+
+            if (!member.moderatable) {
+                return interaction.reply({
+                    content: '❌ Bot không thể gỡ timeout người này.',
+                    ephemeral: true
+                });
+            }
+
+            await member.timeout(null);
+
+            const embed = new EmbedBuilder()
+                .setColor('#00cc66')
+                .setTitle('🔊 UNTIMEOUT MEMBER')
+                .addFields(
+                    { name: 'Thành viên', value: `${user}`, inline: true },
+                    { name: 'Người thực hiện', value: `${interaction.user}`, inline: true }
+                )
+                .setTimestamp();
+
+            await sendModLog(interaction.guild, embed);
+
+            return interaction.reply({
+                embeds: [embed]
+            });
+        }
+
+        if (command === 'status') {
+            const uptime = Math.floor(process.uptime());
+            const hours = Math.floor(uptime / 3600);
+            const minutes = Math.floor((uptime % 3600) / 60);
+            const seconds = uptime % 60;
+
+            const memory = process.memoryUsage();
+            const ramUsed = (memory.rss / 1024 / 1024).toFixed(2);
+
+            const embed = new EmbedBuilder()
+                .setColor('#8A2BE2')
+                .setTitle('📊 BOT STATUS')
+                .addFields(
+                    { name: '🤖 Bot', value: `${client.user.tag}`, inline: true },
+                    { name: '🟢 Trạng thái', value: 'Online', inline: true },
+                    { name: '⏱️ Uptime', value: `${hours}h ${minutes}m ${seconds}s`, inline: true },
+                    { name: '💾 RAM', value: `${ramUsed} MB`, inline: true },
+                    { name: '🌐 Servers', value: `${client.guilds.cache.size}`, inline: true },
+                    { name: '👥 Users', value: `${client.users.cache.size}`, inline: true }
+                )
+                .setTimestamp();
+
+            return interaction.reply({
+                embeds: [embed]
             });
         }
 
@@ -410,6 +630,18 @@ client.on('interactionCreate', async interaction => {
                     if (deleted.size < 2) break;
                 }
 
+                const embed = new EmbedBuilder()
+                    .setColor('#ff6600')
+                    .setTitle('🧹 CLEAR MESSAGES')
+                    .addFields(
+                        { name: 'Kênh', value: `${interaction.channel}` },
+                        { name: 'Số lượng', value: `${totalDeleted}` },
+                        { name: 'Người thực hiện', value: `${interaction.user}` }
+                    )
+                    .setTimestamp();
+
+                await sendModLog(interaction.guild, embed);
+
                 return interaction.editReply(
                     `✅ Đã xoá **${totalDeleted}** tin nhắn gần đây.`
                 );
@@ -432,6 +664,18 @@ client.on('interactionCreate', async interaction => {
                 true
             );
 
+            const embed = new EmbedBuilder()
+                .setColor('#ff6600')
+                .setTitle('🧹 CLEAR MESSAGES')
+                .addFields(
+                    { name: 'Kênh', value: `${interaction.channel}` },
+                    { name: 'Số lượng', value: `${deleted.size}` },
+                    { name: 'Người thực hiện', value: `${interaction.user}` }
+                )
+                .setTimestamp();
+
+            await sendModLog(interaction.guild, embed);
+
             return interaction.editReply(
                 `✅ Đã xoá **${deleted.size}** tin nhắn.`
             );
@@ -448,16 +692,12 @@ client.on('interactionCreate', async interaction => {
                 .setTitle('⚠️ CẢNH CÁO')
                 .setDescription(`${user} đã bị cảnh cáo.`)
                 .addFields(
-                    {
-                        name: 'Lý do',
-                        value: reason
-                    },
-                    {
-                        name: 'Người thực hiện',
-                        value: `${interaction.user}`
-                    }
+                    { name: 'Lý do', value: reason },
+                    { name: 'Người thực hiện', value: `${interaction.user}` }
                 )
                 .setTimestamp();
+
+            await sendModLog(interaction.guild, embed);
 
             return interaction.reply({ embeds: [embed] });
         }
@@ -479,9 +719,21 @@ client.on('interactionCreate', async interaction => {
 
             await member.kick(reason);
 
-            return interaction.reply(
-                `✅ Đã kick **${user.tag}**.\nLý do: ${reason}`
-            );
+            const embed = new EmbedBuilder()
+                .setColor('#ff3300')
+                .setTitle('👢 KICK MEMBER')
+                .addFields(
+                    { name: 'Thành viên', value: `${user}` },
+                    { name: 'Lý do', value: reason },
+                    { name: 'Người thực hiện', value: `${interaction.user}` }
+                )
+                .setTimestamp();
+
+            await sendModLog(interaction.guild, embed);
+
+            return interaction.reply({
+                embeds: [embed]
+            });
         }
 
         if (command === 'ban') {
@@ -501,9 +753,21 @@ client.on('interactionCreate', async interaction => {
 
             await member.ban({ reason });
 
-            return interaction.reply(
-                `✅ Đã ban **${user.tag}**.\nLý do: ${reason}`
-            );
+            const embed = new EmbedBuilder()
+                .setColor('#cc0000')
+                .setTitle('🔨 BAN MEMBER')
+                .addFields(
+                    { name: 'Thành viên', value: `${user}` },
+                    { name: 'Lý do', value: reason },
+                    { name: 'Người thực hiện', value: `${interaction.user}` }
+                )
+                .setTimestamp();
+
+            await sendModLog(interaction.guild, embed);
+
+            return interaction.reply({
+                embeds: [embed]
+            });
         }
 
         if (command === 'lock') {
@@ -513,6 +777,17 @@ client.on('interactionCreate', async interaction => {
                     SendMessages: false
                 }
             );
+
+            const embed = new EmbedBuilder()
+                .setColor('#ff9900')
+                .setTitle('🔒 LOCK CHANNEL')
+                .addFields(
+                    { name: 'Kênh', value: `${interaction.channel}` },
+                    { name: 'Người thực hiện', value: `${interaction.user}` }
+                )
+                .setTimestamp();
+
+            await sendModLog(interaction.guild, embed);
 
             return interaction.reply('🔒 Kênh này đã được khoá.');
         }
@@ -524,6 +799,17 @@ client.on('interactionCreate', async interaction => {
                     SendMessages: true
                 }
             );
+
+            const embed = new EmbedBuilder()
+                .setColor('#00cc66')
+                .setTitle('🔓 UNLOCK CHANNEL')
+                .addFields(
+                    { name: 'Kênh', value: `${interaction.channel}` },
+                    { name: 'Người thực hiện', value: `${interaction.user}` }
+                )
+                .setTimestamp();
+
+            await sendModLog(interaction.guild, embed);
 
             return interaction.reply('🔓 Kênh này đã được mở khoá.');
         }
@@ -543,6 +829,18 @@ client.on('interactionCreate', async interaction => {
             await interaction.channel.send({
                 embeds: [embed]
             });
+
+            const logEmbed = new EmbedBuilder()
+                .setColor('#ff6600')
+                .setTitle('📢 ANNOUNCE SENT')
+                .addFields(
+                    { name: 'Kênh', value: `${interaction.channel}` },
+                    { name: 'Người thực hiện', value: `${interaction.user}` },
+                    { name: 'Nội dung', value: message.slice(0, 1000) }
+                )
+                .setTimestamp();
+
+            await sendModLog(interaction.guild, logEmbed);
 
             return interaction.reply({
                 content: '✅ Đã gửi thông báo.',
@@ -564,4 +862,3 @@ client.on('interactionCreate', async interaction => {
 });
 
 client.login(process.env.TOKEN);
-// Pikay dev
