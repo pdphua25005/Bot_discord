@@ -1,6 +1,14 @@
 const Canvas = require('canvas');
 const { AttachmentBuilder } = require('discord.js');
 
+Canvas.registerFont('./assets/fonts/BeVietnamPro-Regular.ttf', {
+    family: 'BeVietnam'
+});
+
+Canvas.registerFont('./assets/fonts/BeVietnamPro-Bold.ttf', {
+    family: 'BeVietnamBold'
+});
+
 function roundRect(ctx, x, y, width, height, radius) {
     ctx.beginPath();
     ctx.moveTo(x + radius, y);
@@ -18,12 +26,7 @@ function roundRect(ctx, x, y, width, height, radius) {
 function cleanUsername(name) {
     if (!name) return 'New Member';
 
-    let cleaned = name
-        .normalize('NFKD')
-        .replace(/[^\p{L}\p{N}\s._-]/gu, '')
-        .trim();
-
-    if (!cleaned) cleaned = 'New Member';
+    let cleaned = name.trim();
 
     if (cleaned.length > 18) {
         cleaned = cleaned.substring(0, 18) + '...';
@@ -72,7 +75,15 @@ async function createWelcome(member) {
     );
     ctx.closePath();
     ctx.clip();
-    ctx.drawImage(avatar, avatarX, avatarY, avatarSize, avatarSize);
+
+    ctx.drawImage(
+        avatar,
+        avatarX,
+        avatarY,
+        avatarSize,
+        avatarSize
+    );
+
     ctx.restore();
 
     const ringGradient = ctx.createLinearGradient(
@@ -89,6 +100,7 @@ async function createWelcome(member) {
     ctx.lineWidth = 9;
     ctx.shadowColor = '#ff7b00';
     ctx.shadowBlur = 35;
+
     ctx.beginPath();
     ctx.arc(
         avatarX + avatarSize / 2,
@@ -97,53 +109,106 @@ async function createWelcome(member) {
         0,
         Math.PI * 2
     );
+
     ctx.stroke();
     ctx.shadowBlur = 0;
 
     const contentX = avatarX + avatarSize + 50;
     const contentY = avatarY + 10;
 
-    const fontRegular = 'sans-serif';
-    const fontBold = 'sans-serif';
+    const fontRegular = 'BeVietnam';
+    const fontBold = 'BeVietnamBold';
+
+    // WELCOME TO
 
     ctx.fillStyle = '#ffffff';
     ctx.font = `bold 26px ${fontBold}`;
     ctx.fillText('WELCOME TO', contentX, contentY);
 
-    const titleGradient = ctx.createLinearGradient(contentX, 0, contentX + 400, 0);
+    // PK DESIGN
+
+    const titleGradient = ctx.createLinearGradient(
+        contentX,
+        0,
+        contentX + 400,
+        0
+    );
+
     titleGradient.addColorStop(0, '#a855f7');
     titleGradient.addColorStop(1, '#ff7b00');
 
     ctx.fillStyle = titleGradient;
     ctx.font = `bold 58px ${fontBold}`;
-    ctx.fillText('PK DESIGN', contentX, contentY + 65);
+
+    ctx.fillText(
+        'PK DESIGN',
+        contentX,
+        contentY + 65
+    );
+
+    // USERNAME
 
     const username = cleanUsername(member.user.username);
 
     ctx.fillStyle = '#ffffff';
     ctx.font = `bold 42px ${fontBold}`;
-    ctx.fillText(username, contentX, contentY + 125);
+
+    ctx.fillText(
+        username,
+        contentX,
+        contentY + 125
+    );
+
+    // NEW MEMBER
 
     ctx.fillStyle = 'rgba(139, 92, 246, 0.9)';
-    roundRect(ctx, contentX, contentY + 155, 160, 38, 10);
+
+    roundRect(
+        ctx,
+        contentX,
+        contentY + 155,
+        180,
+        40,
+        10
+    );
+
     ctx.fill();
 
     ctx.fillStyle = '#ffffff';
     ctx.font = `bold 19px ${fontBold}`;
-    ctx.fillText('NEW MEMBER', contentX + 18, contentY + 183);
+
+    ctx.fillText(
+        'NEW MEMBER',
+        contentX + 20,
+        contentY + 183
+    );
+
+    // INFO
 
     const infoStartY = contentY + 220;
 
     ctx.fillStyle = '#cbd5e1';
     ctx.font = `18px ${fontRegular}`;
 
-    ctx.fillText(`Member #${member.guild.memberCount}`, contentX, infoStartY);
+    ctx.fillText(
+        `Member #${member.guild.memberCount}`,
+        contentX,
+        infoStartY
+    );
+
     ctx.fillText(
         `Joined: ${new Date().toLocaleDateString('vi-VN')}`,
         contentX,
         infoStartY + 32
     );
-    ctx.fillText('Status: ACTIVE', contentX, infoStartY + 64);
+
+    ctx.fillText(
+        'Status: ACTIVE',
+        contentX,
+        infoStartY + 64
+    );
+
+    // BOXES
 
     const boxY = cardY + cardH - 95;
     const boxW = 165;
@@ -180,21 +245,43 @@ async function createWelcome(member) {
 
     boxes.forEach(box => {
         ctx.fillStyle = box.fill;
-        roundRect(ctx, box.x, boxY, boxW, boxH, 12);
+
+        roundRect(
+            ctx,
+            box.x,
+            boxY,
+            boxW,
+            boxH,
+            12
+        );
+
         ctx.fill();
 
         ctx.fillStyle = '#ffffff';
         ctx.font = `16px ${fontRegular}`;
-        ctx.fillText(box.label, box.x + 15, boxY + 24);
+
+        ctx.fillText(
+            box.label,
+            box.x + 15,
+            boxY + 24
+        );
 
         ctx.fillStyle = box.color;
         ctx.font = `bold 26px ${fontBold}`;
-        ctx.fillText(box.value, box.x + 15, boxY + 52);
+
+        ctx.fillText(
+            box.value,
+            box.x + 15,
+            boxY + 52
+        );
     });
 
-    return new AttachmentBuilder(canvas.toBuffer('image/png'), {
-        name: 'welcome.png'
-    });
+    return new AttachmentBuilder(
+        canvas.toBuffer('image/png'),
+        {
+            name: 'welcome.png'
+        }
+    );
 }
 
 module.exports = {
